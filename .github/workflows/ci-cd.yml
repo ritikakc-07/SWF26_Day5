@@ -1,0 +1,179 @@
+name: Login System CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  system-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Detect student directory
+      id: detect-dir
+      run: |
+        student_dir=$(find . -maxdepth 1 -type d \
+          -exec test -d "{}/backend" \; \
+          -exec test -d "{}/frontend" \; \
+          -printf "%f\n" | head -n 1)
+
+        if [ -z "$student_dir" ]; then
+          echo "❌ Student directory with both backend and frontend not found."
+          exit 1
+        fi
+
+        echo "✅ Found student directory: $student_dir"
+        echo "student_dir=$student_dir" >> $GITHUB_ENV
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Install Python dependencies
+      run: |
+        cd ${{ env.student_dir }}/backend
+        pip install -r requirements.txt || echo "No requirements.txt found"
+        pip install fastapi uvicorn requests pytest pytest-asyncio httpx
+
+    - name: Install Node.js dependencies (if any)
+      run: |
+        cd ${{ env.student_dir }}/frontend
+        if [ -f package.json ]; then npm install; fi
+
+    - name: Start Backend Server
+      run: |
+        cd ${{ env.student_dir }}/backend
+        python -m uvicorn main:app --host 0.0.0.0 --port 8000 &
+        echo "Backend server started"
+        sleep 5
+
+    - name: Start Frontend Server
+      run: |
+        cd ${{ env.student_dir }}/frontend
+        python -m http.server 3000 &
+        echo "Frontend server started"
+        sleep 3
+
+    - name: Wait for servers to be ready
+      run: |
+        echo "Waiting for backend to be ready..."
+        for i in {1..30}; do
+          if curl -s http://localhost:8000/docs > /dev/null; then
+            echo "✅ Backend is ready!"
+            break
+          fi
+          echo "Waiting... ($i/30)"
+          sleep 2
+        done
+
+        echo "Waiting for frontend to be ready..."
+        for i in {1..15}; do
+          if curl -s http://localhost:3000 > /dev/null; then
+            echo "✅ Frontend is ready!"
+            break
+          fi
+          echo "Waiting... ($i/15)"
+          sleep 2
+        done
+
+    - name: Run System Integration Tests
+      run: |
+        cd ${{ env.student_dir }}/backend
+        python -m pytest ../../tests/test_system.py -v --tb=short
+
+    - name: Frontend Basic Validation
+      run: |
+        echo "Testing frontend accessibility..."
+        response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000)
+        if [ $response -eq 200 ]; then
+          echo "✅ Frontend is accessible"
+        else
+          echo "❌ Frontend not accessible (HTTP $response)"
+          exit 1
+        fi
+
+        echo "Checking for basic HTML structure..."
+        content=$(curl -s http://localhost:3000)
+        if echo "$content" | grep -q "<form"; then
+          echo "✅ Form elements found"
+        else
+          echo "⚠️  No form elements found, but continuing..."
+        fi
+
+    - name: API Health Check
+      run: |
+        echo "Testing API health..."
+        response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/docs)
+        if [ $response -eq 200 ]; then
+          echo "✅ FastAPI docs accessible"
+        else
+          echo "❌ FastAPI docs not accessible"
+          exit 1
+        fi
+
+        for endpoint in "/register" "/login"; do
+          response=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000$endpoint \
+            -H "Content-Type: application/json" \
+            -d '{"test": "data"}')
+
+          if [ $response -eq 422 ] || [ $response -eq 400 ] || [ $response -eq 200 ]; then
+            echo "✅ Endpoint $endpoint exists (HTTP $response)"
+          else
+            echo "❌ Endpoint $endpoint not found or error (HTTP $response)"
+            exit 1
+          fi
+        done
+
+    - name: Generate Test Report
+      if: always()
+      run: |
+        echo "## 🚀 System Test Results" > test_report.md
+        echo "" >> test_report.md
+        echo "### Backend Status" >> test_report.md
+        if curl -s http://localhost:8000/docs > /dev/null; then
+          echo "✅ Backend server is running" >> test_report.md
+        else
+          echo "❌ Backend server issues" >> test_report.md
+        fi
+
+        echo "" >> test_report.md
+        echo "### Frontend Status" >> test_report.md
+        if curl -s http://localhost:3000 > /dev/null; then
+          echo "✅ Frontend server is running" >> test_report.md
+        else
+          echo "❌ Frontend server issues" >> test_report.md
+        fi
+
+        echo "" >> test_report.md
+        echo "### API Endpoints" >> test_report.md
+        for endpoint in "/register" "/login"; do
+          response=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8000$endpoint \
+            -H "Content-Type: application/json" \
+            -d '{"test": "data"}' || echo "000")
+
+          if [ $response -eq 422 ] || [ $response -eq 400 ] || [ $response -eq 200 ]; then
+            echo "✅ $endpoint - Available" >> test_report.md
+          else
+            echo "❌ $endpoint - Not found" >> test_report.md
+          fi
+        done
+
+        cat test_report.md
+
+    - name: Upload Test Report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-report
+        path: test_report.md
