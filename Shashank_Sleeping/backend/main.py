@@ -12,10 +12,10 @@ from json import JSONDecodeError
 app = FastAPI()
 
 
-# Add CORS middleware, This is necessary to allow your frontend to communicate with the backend. 
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # This should only be done in development. Not a safe thing to do in production code.
+    allow_origins=["*"],  # In production, replace with specific origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,9 +65,12 @@ async def register_user(user: UserRegister):
     return {"message": "User registered successfully", "username": user.username}
     # Implementation with validation
 
-
-
-# Assignment: Implement the login functionality.
-# Create a POST endpoint "/login" that checks if the username and password match any user in the database.
-# If credentials are correct, return a success message; otherwise, raise an HTTP 401 error.
-# Hint: Don't forget to hash the password before checking it against the stored hashed password.
+@app.post("/login")
+async def login_user(user: UserLogin):
+    users_data = load_users()
+    # Check credentials
+    for existing_user in users_data["users"]:
+        if (existing_user["username"] == user.username and
+            existing_user["password"] == hashlib.sha256(user.password.encode()).hexdigest()):
+            return {"message": "Login successful", "username": user.username}
+    raise HTTPException(status_code=401, detail="Invalid credentials")

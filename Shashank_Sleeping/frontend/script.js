@@ -68,19 +68,14 @@ loginForm.addEventListener('submit', async (e) => {
         return;
     }
     
-
-    /*
-    Assignment:
-    Implement the login functionality inside this event handler. We have to link the login form to the backend API for user authentication.
-
-    Requirements:
-    - Use the already provided `callAPI` function to send a POST request to the `/login` endpoint with the username and password.
-    - Use the `showMessage` function to display feedback to the user depending on what is received from mthe backend.
-
-    Hints:
-    - `callAPI` returns an object with `success`, `data`, and `status` properties.
-    - To access error details from the API response, use `result.data?.detail`.
-    */
+    const result = await callAPI('/login', 'POST', { username, password });
+    
+    if (result.success) {
+        showMessage(`Welcome back, ${username}!`, 'success');
+        loginForm.reset();
+    } else {
+        showMessage(result.data?.detail || 'Login failed', 'error');
+    }
 });
 
 // Handle register form submission
