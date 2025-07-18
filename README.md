@@ -5,14 +5,17 @@ This is a full stack system for teaching how a full stack app works on basic and
 
 # Your Task
 - Fork the repository.
+- In the Forked Repository, on the GitHub, navigate to Actions tab and allow the GitHub Actions.
 - Clone the repository.
 - Unzip the provided zip.
 - Rename the YourName_SomethingYouLike/ folder with your name and what you like. 
+- [DO NOT CHANGE OR MODIFY ANY OTHER FILES EXCEPT THE ONE YOU EXTRACTED AND RENAMED]. 
 - Then, go inside the folder.
 - In the backend, complete the task provided in the main.py
 - In the frontend, complete the task provided in the index.html and script.js
 - Follow the Readme Provided to follow along. 
 - Test the working system locally.
+- Do a git pull, so that the recent changes are fetched on the main repo before you push yours.
 - Push the working repository.
 - Create a pull request.
 
